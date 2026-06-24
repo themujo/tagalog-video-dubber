@@ -131,7 +131,7 @@ Input transcript with timestamps:
         prompt = self.get_recap_prompt(dialogue_segments, total_duration, glossary)
         try:
             genai.configure(api_key=key)
-            model = genai.GenerativeModel('gemini-2.5-flash')
+            model = genai.GenerativeModel('gemini-3.1-flash-lite')
             response = model.generate_content(prompt)
             logger.info("✅ Recap generated successfully using Gemini!")
             return response.text.strip()
