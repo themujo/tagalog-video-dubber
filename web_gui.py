@@ -1,5 +1,5 @@
 """
-Web GUI for English to Tagalog Video Dubbing - Ultimate Workstation with Multi-Tabs & Colab Auto-Detect
+Web GUI for English to Tagalog Video Dubbing - Ultimate Workstation with Multi-Tabs & Recap Title Translation
 """
 
 import os
@@ -70,6 +70,127 @@ def generate_srt_file(df, srt_filepath):
         logger.error(f"Error generating SRT: {e}")
         return False
 
+
+# ==================== 📌 INAYOS: RECAP FUNCTIONS (Nawawala kanina) ====================
+
+async def process_recap_gui(video_file, youtube_url, whisper_model, translator, glossary):
+    """
+    Function na nag-da-download ng video mula sa YouTube o gumagamit ng uploaded file,
+    at tinatawag ang recap.py para gawan ito ng Tagalog Recap Story Video & Audio!
+    """
+    if not recap_available:
+        yield None, None, "❌ ERROR: Hindi mahanap ang recap.py file sa iyong folder."
+        return
+
+    input_path = None
+    temp_yt_file = "temp_recap_youtube_video.mp4"
+    translated_title = ""
+    
+    dubber = VideoDubber() # Gamitin ang dubber para sa translation ng title
+    
+    # 1. Alamin kung YouTube URL o File Upload ang gagamitin at isalin ang pamagat sa Tagalog
+    if youtube_url and youtube_url.strip():
+        yield None, None, "📥 Kinukuha ang impormasyon at pamagat ng video mula sa YouTube..."
+        try:
+            if os.path.exists(temp_yt_file):
+                try:
+                    os.remove(temp_yt_file)
+                except Exception:
+                    pass
+            
+            loop = asyncio.get_event_loop()
+            
+            def get_yt_info():
+                import yt_dlp
+                with yt_dlp.YoutubeDL({'quiet': True}) as ydl:
+                    info = ydl.extract_info(youtube_url.strip(), download=False)
+                    return info.get('title', 'youtube_video')
+            
+            yt_title = await loop.run_in_executor(None, get_yt_info)
+            
+            yield None, None, f"🌐 Isinasalin sa Tagalog ang pamagat ng YouTube video: '{yt_title}'..."
+            
+            # Isalin ang pamagat sa Tagalog gamit ang glossary
+            translated_title_list = await dubber.translate_text([yt_title], translator=translator, glossary=glossary)
+            translated_title = translated_title_list[0].get("translated", yt_title)
+            
+            yield None, None, f"📥 Nagda-download mula sa YouTube: '{translated_title}'..."
+            
+            def download_yt():
+                import yt_dlp
+                ydl_opts = {
+                    'format': 'best[ext=mp4]/best',
+                    'outtmpl': temp_yt_file,
+                    'overwrites': True,
+                    'quiet': True,
+                    'extractor_args': {
+                        'youtube': {
+                            'player_client': ['ios', 'android']
+                        }
+                    }
+                }
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    ydl.download([youtube_url.strip()])
+            
+            await loop.run_in_executor(None, download_yt)
+            input_path = temp_yt_file
+            logger.info("✅ YouTube video downloaded successfully")
+            
+        except Exception as e:
+            yield None, None, f"❌ ERROR sa YouTube download: {str(e)}"
+            return
+    else:
+        input_path = video_file
+        if video_file:
+            orig_name = os.path.basename(video_file)
+            name_without_ext, _ = os.path.splitext(orig_name)
+            
+            yield None, None, f"🌐 Isinasalin sa Tagalog ang pamagat ng local file: '{name_without_ext}'..."
+            
+            # Isalin ang pangalan ng local file sa Tagalog gamit ang glossary
+            translated_title_list = await dubber.translate_text([name_without_ext], translator=translator, base_voice="fil-PH-BlessicaNeural", glossary=glossary)
+            translated_title = translated_title_list[0].get("translated", name_without_ext)
+
+    # 2. Suriin kung may valid na input file
+    if not input_path or not os.path.exists(input_path):
+        yield None, None, "❌ ERROR: Walang video file. Mag-upload ng file o mag-paste ng YouTube link."
+        return
+
+    yield None, None, "⚙️ Nagsisimula na ang transcription sa Whisper at pagsusuri ng AI... (Maaaring tumagal ng ilang minuto, pakihintay)"
+    await asyncio.sleep(0.5)
+
+    recapper = VideoRecapper()
+    
+    try:
+        # Tawagin ang process_recap at ipasa ang translated_title!
+        recap_video_path, recap_script_text = await recapper.process_recap(
+            video_path=input_path,
+            whisper_model=whisper_model,
+            translator=translator,
+            glossary=glossary,
+            translated_title=translated_title
+        )
+        
+        # I-cleanup ang temporary downloaded file
+        if os.path.exists(temp_yt_file):
+            try:
+                os.remove(temp_yt_file)
+            except Exception:
+                pass
+        
+        if recap_video_path and os.path.exists(recap_video_path):
+            display_name = os.path.basename(recap_video_path)
+            yield recap_video_path, recap_script_text, f"🎉 SUCCESS! Matagumpay na natapos ang AI Recap! Na-save bilang: 'output/{display_name}'"
+        else:
+            yield None, None, f"❌ FAILED: {recap_script_text}"
+            
+    except Exception as e:
+        logger.error(f"Recap GUI Error: {e}", exc_info=True)
+        yield None, None, f"❌ ERROR sa pagbuo ng recap: {str(e)}"
+
+
+# ==================== DUBBING FUNCTIONS ====================
+
 async def generate_dubbed_video_step(df, input_path, output_filename, voice, rate_val, pitch_hz_val, video_speed, multi_speaker, bgm_volume):
     """
     Step 2: Gamit ang na-edit na DataFrame, i-synthesize ang bawat linya, i-mix ang BGM, at i-merge sa video.
@@ -136,7 +257,6 @@ async def generate_dubbed_video_step(df, input_path, output_filename, voice, rat
                 emotion=emotion_type
             )
 
-            # Synthesize gamit ang volume (pabulong at Google TTS support!)
             success = await dubber.synthesize_tagalog(translated_text, seg_audio_path, seg_voice, seg_rate, seg_pitch, volume=seg_volume)
             if not success:
                 continue
@@ -195,7 +315,7 @@ async def generate_dubbed_video_step(df, input_path, output_filename, voice, rat
         
         # Awtomatikong i-mix ang original background music at sound effects!
         if bgm_volume > 0.0:
-            logger.info(f"🎛️ Mixing background BGM/SFX at {bgm_volume*100}% volume...")
+            logger.info(f"🎛️ Mixing original background BGM/SFX track at {bgm_volume*100}% volume...")
             orig_audio = video.audio
             if video_speed != 1.0:
                 orig_audio = orig_audio.filter('atempo', video_speed)
@@ -266,7 +386,7 @@ async def generate_dubbed_video_step(df, input_path, output_filename, voice, rat
 # 📌 INAYOS: Kumpletong 12-arguments signature na nagbabalik ng eksaktong 6 values sa bawat solong 'yield'
 async def transcribe_and_translate_step(video_file, youtube_url, whisper_model, translator, voice, speed_pct, pitch_hz, video_speed, multi_speaker, editor_mode, bgm_volume, glossary):
     """
-    Step 1: I-transcribe, isalin ang bawat linya, at isalin ang pamagat ng video sa Tagalog.
+    Step 1: I-transcribe, isalin ang bawat linya (may Glossary at Emotion support), at isalin ang pamagat ng video sa Tagalog.
     Kung naka-OFF ang editor_mode, dideretso ito agad sa pag-render ng LAHAT ng nasa pila (Bulk Queue Mode)!
     """
     # Ipunin ang lahat ng kailangang iproseso (Queue System)
@@ -432,7 +552,6 @@ async def transcribe_and_translate_step(video_file, youtube_url, whisper_model, 
     # ==================== B. KUNG NAKA-OFF ANG EDITOR MODE (BULK QUEUE) ====================
     # Awtomatikong ipoproseso ang LAHAT ng video sa pila isa-isa mula simula hanggang pinal na render!
     else:
-        # Tiyaking eksaktong 6 values ang ibinabalik sa yield
         yield None, None, None, None, None, f"📋 [Bulk Mode] Nakahanap ng {total_tasks} na dubbing tasks sa pila. Nagsisimula na..."
         await asyncio.sleep(1.5)
         
@@ -448,7 +567,6 @@ async def transcribe_and_translate_step(video_file, youtube_url, whisper_model, 
             output_filename = os.path.join(OUTPUT_DIR, f"output_batch_{task_num}.mp4")
             video_title = "Video"
             
-            # Tiyaking eksaktong 6 values ang ibinabalik sa yield
             yield None, None, None, None, None, f"🔄 [{task_num}/{total_tasks}] Kinukuha ang impormasyon para sa: {source}..."
             
             # YouTube task processing
@@ -476,7 +594,6 @@ async def transcribe_and_translate_step(video_file, youtube_url, whisper_model, 
                     output_filename = os.path.join(OUTPUT_DIR, f"{clean_title}_tagalog_dubbed.mp4")
                     video_title = yt_title
                     
-                    # Tiyaking eksaktong 6 values ang ibinabalik sa yield
                     yield None, None, None, None, None, f"📥 [{task_num}/{total_tasks}] Nagda-download mula sa YouTube: '{clean_title}'..."
                     
                     def download_yt():
@@ -506,7 +623,7 @@ async def transcribe_and_translate_step(video_file, youtube_url, whisper_model, 
                 orig_name = os.path.basename(source)
                 name_without_ext, _ = os.path.splitext(orig_name)
                 
-                # Isalin ang pamagat
+                # Isalin ang pamagat (May Glossary support!)
                 translated_title_list = await dubber.translate_text([name_without_ext], translator=translator, base_voice=voice, glossary=glossary)
                 translated_title = translated_title_list[0].get("translated", name_without_ext)
                 clean_title = sanitize_filename(translated_title)
@@ -514,7 +631,6 @@ async def transcribe_and_translate_step(video_file, youtube_url, whisper_model, 
                 input_path = source
                 video_title = orig_name
                 
-            # Tiyaking eksaktong 6 values ang ibinabalik sa yield
             yield None, None, None, None, None, f"🎙️ [{task_num}/{total_tasks}] Isinasalin at dinee-dub: '{video_title}' -> '{output_filename}'..."
             await asyncio.sleep(1)
             
@@ -566,7 +682,6 @@ async def transcribe_and_translate_step(video_file, youtube_url, whisper_model, 
                 
                 # Patakbuhin ang Step 2 (Synthesis, BGM Mix & Subtitle) para sa task na ito
                 async for output_video_file, status_msg in generate_dubbed_video_step(df, input_path, output_filename, voice, speed_pct, pitch_hz, video_speed, multi_speaker, bgm_volume):
-                    # Tiyaking eksaktong 6 values ang ibinabalik sa yield
                     yield df, input_path, output_filename, input_path, output_video_file, f"[{task_num}/{total_tasks}] {status_msg}"
                 
                 if os.path.exists(output_filename):
@@ -586,7 +701,6 @@ async def transcribe_and_translate_step(video_file, youtube_url, whisper_model, 
                 summary_msg += f" - {ft}\n"
                 
         last_file = successful_files[-1] if successful_files else None
-        # Tiyaking eksaktong 6 values ang ibinabalik sa yield
         yield None, None, None, None, last_file, summary_msg
 
 def on_segment_select(df, evt: gr.SelectData):
