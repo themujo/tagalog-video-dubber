@@ -939,4 +939,6 @@ with gr.Blocks(title="Tagalog Video Dubbing Workstation", theme=gr.themes.Soft()
 
 if __name__ == "__main__":
     demo.queue()
-    demo.launch(server_name="127.0.0.1", server_port=7860, share=False)
+    # Awtomatikong i-enable ang share=True kung tumatakbo sa loob ng Google Colab (Linux Server)
+    is_colab = os.path.exists("/content")
+    demo.launch(
