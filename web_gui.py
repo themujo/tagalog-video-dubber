@@ -1,5 +1,5 @@
 """
-Web GUI for English to Tagalog Video Dubbing - Ultimate Workstation with Multi-Tabs & Recap Title Translation
+Web GUI for English to Tagalog Video Dubbing - Ultimate Workstation with Multi-Tabs & Colab Support
 """
 
 import os
@@ -71,7 +71,7 @@ def generate_srt_file(df, srt_filepath):
         return False
 
 
-# ==================== 📌 INAYOS: RECAP FUNCTIONS (Nawawala kanina) ====================
+# ==================== RECAP FUNCTIONS ====================
 
 async def process_recap_gui(video_file, youtube_url, whisper_model, translator, glossary):
     """
@@ -247,7 +247,7 @@ async def generate_dubbed_video_step(df, input_path, output_filename, voice, rat
 
             seg_audio_path = f"temp_seg_{i}.wav"
             
-            # Kunin ang dynamic voice params batay sa karakter at emosyon
+            # Kunin ang boses at volume
             seg_voice, seg_rate, seg_pitch, seg_volume = dubber.get_voice_params(
                 speaker_type, 
                 base_voice=voice, 
@@ -315,7 +315,7 @@ async def generate_dubbed_video_step(df, input_path, output_filename, voice, rat
         
         # Awtomatikong i-mix ang original background music at sound effects!
         if bgm_volume > 0.0:
-            logger.info(f"🎛️ Mixing original background BGM/SFX track at {bgm_volume*100}% volume...")
+            logger.info(f"🎛️ Mixing background BGM/SFX at {bgm_volume*100}% volume...")
             orig_audio = video.audio
             if video_speed != 1.0:
                 orig_audio = orig_audio.filter('atempo', video_speed)
@@ -721,7 +721,7 @@ with gr.Blocks(title="Tagalog Video Dubbing Workstation", theme=gr.themes.Soft()
     gr.Markdown(
         """
         # 🎙️ Tagalog AI Video Dubbing Workstation (Cinema Edition with Bulk Support)
-        **Step 1:** I-upload ang isa o maramihang local videos o YouTube links. **Step 2:** Kung naka-OFF ang Editor, awtomatikong dideretso sa pag-dub ng LAHAT ng pila, isasalin ang kanilang mga pamagat sa Tagalog, at imi-mix ang orihinal na BGM/SFX [1]!
+        Pumili sa mga tab sa ibaba: **AI Video Dubber** para sa pagsasalin at pag-dub, o **AI Video Recap** para gawan ng kapana-panabik na Tagalog na narasyon ang iyong video [1]!
         """
     )
     
@@ -755,7 +755,7 @@ with gr.Blocks(title="Tagalog Video Dubbing Workstation", theme=gr.themes.Soft()
                         label="Whisper Model"
                     )
                     translator = gr.Dropdown(
-                        choices=["google", "gemini", "openai", "groq", "huggingface"], # Dinagdag ang 'huggingface' option
+                        choices=["google", "gemini", "openai", "groq", "huggingface"], 
                         value="google", 
                         label="Translation Engine"
                     )
@@ -930,7 +930,7 @@ with gr.Blocks(title="Tagalog Video Dubbing Workstation", theme=gr.themes.Soft()
                     placeholder="Dito lalabas ang dramatikong kwento/recap..."
                 )
                 
-        # Bind Event para sa Recap Tab
+        # Bind Event para sa Recap Tab (Awtomatikong mag-re-return ng video path at ng text script!)
         recap_btn.click(
             fn=process_recap_gui,
             inputs=[recap_video, recap_yt_url, recap_whisper, recap_translator, recap_glossary],
@@ -939,6 +939,4 @@ with gr.Blocks(title="Tagalog Video Dubbing Workstation", theme=gr.themes.Soft()
 
 if __name__ == "__main__":
     demo.queue()
-    # Awtomatikong i-enable ang share=True kung tumatakbo sa loob ng Google Colab (Linux Server)
-    is_colab = os.path.exists("/content")
-    demo.launch(
+    demo.launch(server_name="127.0.0.1", server_port=7860, share=False)
